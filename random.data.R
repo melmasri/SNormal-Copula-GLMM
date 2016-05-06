@@ -32,7 +32,6 @@ Db	= lapply(1:units, function(i) if(NROW(b)>1) c(D[F==i,]%*%b_o[[i]]) else  D[F=
 ## @@ Inverting to get Y from Z @@Y
 alpha = lambda/sqrt(1+ t(lambda)%*%lambda)
 delta = alpha
-#delta = c(sqrtm(Sig)%*%alpha)
 lambda_unit = delta/sqrt(1-delta^2)
 Z_o = rmsn(units, xi = 0, Omega = Sig , alpha = lambda)
 pz =  apply(Z_o, 1, function(r) psn(r, xi =0, omega=1, alpha =lambda_unit))

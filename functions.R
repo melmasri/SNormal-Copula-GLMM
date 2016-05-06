@@ -85,29 +85,26 @@ ZGenFromY<-function(obj,blist, mean = TRUE){
     ## Given Y, estimate Z by distribution transformation
     ## mean=TRUE does the transformation T as T(E(b)), rather than E(T(b))
     ## where b is the random effect variable. The former is faster but not exact as a result of convexity.
+    auxf <- function(a,b) qsn(a, xi=0, omega=1, alpha=b,lower.tail=TRUE)
+    lambda_unit = rep(obj$delta/sqrt(1-obj$delta^2), obj$units)
+
     if(mean){
-        b = sapply(blist, mean)
-        Db = obj$D*rep(b, each= obj$obs)
+        b = colMeans(blist)
+        Db = obj$D*b
         x = obj$glm.link(obj$X %*% obj$B + Db)
         pp = obj$glm.pfun(x,  obj$Y)
         pp[which(pp>.999999)]=.9999
         pp[which(pp<.000001)]=.0001
-        lambda_unit = obj$delta/sqrt(1-obj$delta^2)
-        sapply(1:length(pp), function(r) 
-            qsn(pp[r], xi=Db[r], omega=1, alpha=lambda_unit[r],lower.tail=TRUE))  
+        z= mapply(auxf, pp, lambda_unit) + b
     } else{
-        bb =  lapply(1:NROW(blist[[1]]), function(i) t(sapply(1:obj$units, function(j) blist[[j]][i,])))
-        lambda_unit = obj$delta/sqrt(1-obj$delta^2)
-        z=  sapply(bb, function(b){
-            Db = obj$D*rep(b, each= obj$obs)
-            x = obj$glm.link(obj$X %*% obj$B + Db)
-            pp = obj$glm.pfun(x,  obj$Y)
-            pp[which(pp>.999999)]=.9999
-            pp[which(pp<.000001)]=.0001
-            sapply(1:length(pp), function(r) 
-                qsn(pp[r], xi=Db[r], omega=1, alpha=lambda_unit[r],lower.tail=TRUE))  
-    })
-    rowMeans(z)
+        b =  apply(blist, 1,function(r) obj$D*r)
+        x  = obj$glm.link(c(obj$X %*% obj$B) + b)
+        pp =  obj$glm.pfun(x,  obj$Y)
+        pp[which(pp>.999999)]=.9999
+        pp[which(pp<.000001)]=.0001
+        ll = matrix(lambda_unit, nrow=length(lambda_unit), ncol=ncol(pp1))
+        aux = mapply(auxf,pp, ll)
+        rowMeans(matrix(aux, dim(pp)) + b)
     }
 }
 
@@ -176,10 +173,9 @@ best_cglmm<-function(obj, b_o, lambda){
 	obj$v <- abs (rnorm(obj$units,0,1))
     delta = sqrtm(Sig)%*%(lambda/sqrt(1+t(lambda)%*%lambda))
 	Psi<- Sig-delta%*%t(delta)
-
-    obj$Z<- if(is.null(obj$Z)) unlist(Z.raw.hat(lapply(1:units, function(r) rbind(b_o[[r]], b_o[[r]])))) else 
-    obj$Z
     
+    if(is.null(obj$Z))
+        stop('Cannot calculate best log-likelihood, since original SN variable Z is null')
     b.ln.m  = do.call('cbind', b_o)
     b.ln.m = t(apply(b.ln.m, 1, function(r) rep(r, each= obj$obs)))
     ## Best log-likelihood

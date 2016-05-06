@@ -24,7 +24,8 @@ mcem.cglmm<- function(obj, itra =20,verbose=FALSE, delta, sink.to.file=FALSE, up
 	b.ln = lapply(1:obj$units, function(r) mvrnorm(n, mu=rep(0,obj$q),Sigma=1 ))
     b.ln.m  = do.call('cbind', b.ln)
     b.ln.m = t(apply(b.ln.m, 1, function(r) rep(r, each= obj$obs)))
-    obj$Z<- if(is.null(obj$Z)) unlist(Z.raw.hat(b.ln)) else obj$Z
+    update.Z = if(is.null(obj$Z)) TRUE else FALSE
+    obj$Z<- if(update.Z) ZGenFromY(obj,b.ln.m, mean=TRUE) else obj$Z
 
     obj$B[1:NROW(obj$B)]=1;B_best<-rep(1, obj$p)
 	G_best= obj$G =1*diag(obj$q)
@@ -125,10 +126,11 @@ mcem.cglmm<- function(obj, itra =20,verbose=FALSE, delta, sink.to.file=FALSE, up
         obj$xi = xi_best
         Sigdelta_best = obj$Sigdelta
         Psi =Psi_best
-        if(is.null(obj$Z))  obj$Z<-ZGenFromY(b.ln, mean=FALSE) ## no need to update Z if the original is given 
         obj$v <- abs (rnorm(obj$units,0,1))
         b.ln <-bGen.single(obj,n, Psi)
         b.ln.m = t(apply(do.call('cbind', b.ln), 1, function(r) rep(r, each= obj$obs)))
+        if(update.Z)  obj$Z<-ZGenFromY(obj,b.ln.m, mean=FALSE) ## no need to update Z if the original is given 
+
         
     }
     if(sink.to.file)   sink()           # closing sink
