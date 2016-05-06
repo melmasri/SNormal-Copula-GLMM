@@ -61,17 +61,36 @@ mcmc.sim$xi
 plot(lmm.in, mcmc.sim) 
 
 ## To run for multiple chains
+## Settings for server
+## options(echo=TRUE) # if you want see commands in output file
+## args <- commandArgs(trailingOnly = TRUE)
+## DATAFILE = args[1]
+## load(DATAFILE)
+
+## To run for multiple chains
 no.chains = 50
-no.cores = 10
+no.cores = 13
+library(parallel)
 mcmc.sim = mclapply(1:no.chains,function(x,ob){
     source('mcem.cglmm.R', local=TRUE)
-    mcem.cglmm(obj= ob,itra=10,verbose=FALSE, sink.to.file=FALSE,
+    source('functions.R', local=TRUE)
+    tol.err <<- 1e-5
+    LLK_o = best_cglmm(lmm.in, lmm.in$b_o, lambda)  # calculating the approximate best LLK, 
+    mcem.cglmm(obj= ob,itra=74,verbose=FALSE, sink.to.file=FALSE,
                update.single.param = TRUE)}
    ,ob=lmm.in,mc.preschedule = TRUE, mc.cores =no.cores) 
 
 ## Saving for analyzing
-fname   = 'SIM_results.RData'
+fname   = paste0('SIM_',format(Sys.time(), "-%d-%m-%Hh%M_"), DATAFILE)
 save.image(file =fname)
 
-## Analyzing results
-#source('analysis.all.R')
+
+## to receive and email notification
+subject = '"End of processing"'
+#######################################################
+body = paste("Your processing is done for" , fname)
+## Sending notification
+email = paste("echo",body," . | mailx -s " , subject ," myname@mymail.com")
+system(email)
+q('no')
+
