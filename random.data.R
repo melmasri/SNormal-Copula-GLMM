@@ -31,7 +31,8 @@ b_o = lapply(1:units,function(r) mvrnorm(1,mu = rep(0,NROW(G)),Sigma=G))# origin
 Db	= lapply(1:units, function(i) if(NROW(b)>1) c(D[F==i,]%*%b_o[[i]]) else  D[F==i]*b_o[[i]])
 ## @@ Inverting to get Y from Z @@Y
 alpha = lambda/sqrt(1+ t(lambda)%*%lambda)
-delta = c(sqrtm(Sig)%*%alpha)
+delta = alpha
+#delta = c(sqrtm(Sig)%*%alpha)
 lambda_unit = delta/sqrt(1-delta^2)
 Z_o = rmsn(units, xi = 0, Omega = Sig , alpha = lambda)
 pz =  apply(Z_o, 1, function(r) psn(r, xi =0, omega=1, alpha =lambda_unit))
@@ -54,7 +55,8 @@ lmm.in <- cglmm(X, Y, D,F,T,tol.err=tol.err, response.family=response.family)
 lmm.in$B = B
 lmm.in$G = G
 lmm.in$xi = xi
-lmm.in$delta = delta
+lmm.in$delta = alpha
+lmm.in$Sigdelta = sqrtm(Sig)%*%alpha
 lmm.in$Z <-unlist(Z_o)
 lmm.in$b_o <- b_o
 

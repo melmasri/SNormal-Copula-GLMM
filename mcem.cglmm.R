@@ -31,10 +31,10 @@ mcem.cglmm<- function(obj, itra =20,verbose=FALSE, delta, sink.to.file=FALSE, up
 	Sig<- round(sig.auto(obj,p=obj$xi),2)
     sig.old = Sig
     xi_best<-obj$xi
-    la= rep(1, obj$obs)
-    la =la/sqrt(1+t(la)%*%la)
-    delta_best<-obj$delta<-sqrtm(Sig)%*%la
-    Psi<- Sig-obj$delta%*%t(obj$delta)
+    lam= rep(1, obj$obs)
+    delta_best<-obj$delta<-lam/sqrt(1+t(lam)%*%lam)
+    obj$Sigdelta<-sqrtm(Sig)%*%obj$delta
+    Psi<- Sig-obj$Sigdelta%*%t(obj$Sigdelta)
     obj$v <- abs (rnorm(obj$units,0,1))
 	v_best <-obj$v
     LLK_best = -1e10
@@ -67,6 +67,7 @@ mcem.cglmm<- function(obj, itra =20,verbose=FALSE, delta, sink.to.file=FALSE, up
             Psi <- Psi_new$Psi
             sig.old = Psi_new$sig
             obj$delta <-Psi_new$delta
+            obj$Sigdelta<-Psi_new$Sigdelta
             obj$xi = Psi_new$xi
         }
         
@@ -110,6 +111,7 @@ mcem.cglmm<- function(obj, itra =20,verbose=FALSE, delta, sink.to.file=FALSE, up
             xi_best = obj$xi
             Psi_best =Psi
             delta_best = obj$delta
+            Sigdelta_best = obj$Sigdelta
             v_best <-obj$v
             LLK_best = auxlikelihood
             i_best = i
@@ -121,6 +123,7 @@ mcem.cglmm<- function(obj, itra =20,verbose=FALSE, delta, sink.to.file=FALSE, up
         obj$B = B_best
         obj$delta<-delta_best
         obj$xi = xi_best
+        Sigdelta_best = obj$Sigdelta
         Psi =Psi_best
         if(is.null(obj$Z))  obj$Z<-ZGenFromY(b.ln, mean=FALSE) ## no need to update Z if the original is given 
         obj$v <- abs (rnorm(obj$units,0,1))
@@ -130,7 +133,7 @@ mcem.cglmm<- function(obj, itra =20,verbose=FALSE, delta, sink.to.file=FALSE, up
     }
     if(sink.to.file)   sink()           # closing sink
     ## return estimated parameters.
-	list(B=B_best,G = G_best,xi=xi_best, delta= delta_best,LLK = LLK_best ,Z = Z_best, v= v_best, b=b_best, Psi = Psi_best, itra = i_best)
+	list(B=B_best,G = G_best,xi=xi_best, delta= delta_best,Sigdelta = Sigdelta_best,LLK = LLK_best ,Z = Z_best, v= v_best, b=b_best, Psi = Psi_best, itra = i_best)
 }
 
 

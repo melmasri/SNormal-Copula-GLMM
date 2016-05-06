@@ -4,19 +4,17 @@ log.lik<-function(obj, b, Psi){
     ## b is an m x n matrix of random effects, for m replication for each unit n
     ## Psi is the covariance matrix 
     sig= sig.auto(obj,obj$xi)
-    if(missing(Psi)) Psi = sig -obj$delta%*%t(obj$delta)
+    if(missing(Psi)) Psi = sig -obj$Sigdelta%*%t(obj$Sigdelta)
     ## log likelihood for all, faster method.
     inv.psi=  pd.solve(Psi, silent=TRUE, log.det=TRUE)
     det.psi =  attributes(inv.psi)$log.det
-    d = obj$delta
     G_in = obj$G
-    dv = unlist(lapply(obj$v, function(r) r*d))
-    Zin = unlist(obj$Z)
+    dv = unlist(lapply(obj$v, function(r) r*obj$Sigdelta))
+    Zin = obj$Z
     z = Zin-  dv
     ## Addition
-    param = c(solve(sqrtm(sig))%*%d)
-    param = param/sqrt(1-t(param)%*%param)
-    lambda_unit = d/sqrt(1-d^2)
+    lambda_unit = obj$delta/sqrt(1-obj$delta^2)
+    lam= c(obj$delta)/sqrt(1-t(obj$delta)%*%obj$delta)
     aux = apply(b,1, function(s){
         dd = obj$D*s
         s = matrix(s)
@@ -24,7 +22,7 @@ log.lik<-function(obj, b, Psi){
         #sum(tapply(z-dd, obj$levels, function(zz){
         #    -.5*det.psi- .5*t(zz) %*% inv.psi %*%(zz)
         #}))+
-        mle.sn(param, zzz,sig)+
+        mle.sn(lam, zzz,sig)+
             +sum(sapply(1:ncol(zzz), function(i) mle.sn(lambda_unit[i],zzz[,i], 1)))+
             #-0.5*sum(((z -dd)^2)/(1-obj$delta^2) + log(1-obj$delta^2))+
                 +obj$glm.fun(x = obj$glm.link(obj$X%*%obj$B+dd),obj$Y)+
@@ -99,15 +97,15 @@ ZGenFromY<-function(obj,blist, mean = TRUE){
             qsn(pp[r], xi=Db[r], omega=1, alpha=lambda_unit[r],lower.tail=TRUE))  
     } else{
         bb =  lapply(1:NROW(blist[[1]]), function(i) t(sapply(1:obj$units, function(j) blist[[j]][i,])))
+        lambda_unit = obj$delta/sqrt(1-obj$delta^2)
         z=  sapply(bb, function(b){
             Db = obj$D*rep(b, each= obj$obs)
             x = obj$glm.link(obj$X %*% obj$B + Db)
-        pp = obj$glm.pfun(x,  obj$Y)
-        pp[which(pp>.999999)]=.9999
-        pp[which(pp<.000001)]=.0001
-        lambda_unit = obj$delta/sqrt(1-obj$delta^2)
-        sapply(1:length(pp), function(r) 
-            qsn(pp[r], xi=Db[r], omega=1, alpha=lambda_unit[r],lower.tail=TRUE))  
+            pp = obj$glm.pfun(x,  obj$Y)
+            pp[which(pp>.999999)]=.9999
+            pp[which(pp<.000001)]=.0001
+            sapply(1:length(pp), function(r) 
+                qsn(pp[r], xi=Db[r], omega=1, alpha=lambda_unit[r],lower.tail=TRUE))  
     })
     rowMeans(z)
     }
@@ -120,7 +118,7 @@ bGen.single<-function(obj,n, Psi){
     tau2 =solve( solve(obj$G)+ x)
     if(tau2<0)
         tau2=tol.err
-    dz = obj$Z  - rep(obj$delta,obj$units) *rep(obj$v, each = obj$obs)
+    dz = obj$Z  - rep(obj$Sigdelta,obj$units) *rep(obj$v, each = obj$obs)
     dd = obj$D[1:obj$obs]
     tapply(dz, obj$levels, function(zz){
         mu = c(tau2%*%t(dd)%*%spsi%*%zz)
@@ -133,7 +131,7 @@ psi.llk<-function(obj,b.ln, sig.old){
     ##s = t(sapply(1:obj$units, function(r) Z_o[[r]] - mean(b.ln[[r]])))
     Z = do.call('rbind',tapply(obj$Z, obj$levels, function(r)r))
     s = t(sapply(1:obj$units, function(r) Z[r,] - mean(b.ln[[r]])))
-    alpha = c(solve(sqrtm(sig.old))%*%obj$delta)
+    alpha = c(obj$delta)
     alpha =  alpha/sqrt(1-min(0.99,t(alpha)%*%alpha))
     fit = msn.mle(y= s, start=list(rep(0, obj$obs), Omega = sig.old, alpha = alpha),opt.method="BFGS")
     sig.temp = fit$dp$Omega;sig.temp
@@ -146,11 +144,11 @@ psi.llk<-function(obj,b.ln, sig.old){
     lam = fit$dp$alpha/eta
     lam = rep( mean(lam), obj$obs)
     ##lam = rep(1, obj$obs)
-    alpha = lam/sqrt(1+t(lam)%*%lam)
-    delta = sqrtm(sig.temp)%*%alpha
+    delta = lam/sqrt(1+t(lam)%*%lam)
     delta= sign(delta)*pmin(0.99, abs(delta)) ## from wiki notes
-    psi  = sig.temp -delta%*%t(delta)
-    list(Psi = psi , xi =hxi, delta = delta, sig = sig.temp)
+    Sigdelta = sqrtm(sig.temp)%*%delta
+    psi  = sig.temp -Sigdelta%*%t(Sigdelta)
+    list(Psi = psi , xi =hxi, delta = delta,Sigdelta = Sigdelta, sig = sig.temp)
 }
 
 mle.sn<-function (param, y, Omega) {
@@ -176,11 +174,9 @@ best_cglmm<-function(obj, b_o, lambda){
     ## calculates the log-likelihood given the original random effect variable (b_o)
     Sig <-sig.auto(obj,obj$xi)
 	obj$v <- abs (rnorm(obj$units,0,1))
-    l = lambda
-    l = l/sqrt(1+ t(l)%*%l)
-    delta = sqrtm(Sig)%*%l
-	Psi<- Sig-obj$delta%*%t(obj$delta)
-    
+    delta = sqrtm(Sig)%*%(lambda/sqrt(1+t(lambda)%*%lambda))
+	Psi<- Sig-delta%*%t(delta)
+
     obj$Z<- if(is.null(obj$Z)) unlist(Z.raw.hat(lapply(1:units, function(r) rbind(b_o[[r]], b_o[[r]])))) else 
     obj$Z
     
