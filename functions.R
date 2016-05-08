@@ -1,36 +1,61 @@
-tol.err = 1e-4
-log.lik<-function(obj, b, Psi){
+## All functions needed for parameter estimation procedure.
+## General Log-likelihood
+log.lik<-function(obj,b,Psi){
     ## obj := an object from class 'cglmm'
     ## b is an m x n matrix of random effects, for m replication for each unit n
-    ## Psi is the covariance matrix 
-    sig= sig.auto(obj,obj$xi)
-    if(missing(Psi)) Psi = sig -obj$Sigdelta%*%t(obj$Sigdelta)
-    ## log likelihood for all, faster method.
+    ## Psi is the covariance matrix
     inv.psi=  pd.solve(Psi, silent=TRUE, log.det=TRUE)
     det.psi =  attributes(inv.psi)$log.det
     G_in = obj$G
     dv = unlist(lapply(obj$v, function(r) r*obj$Sigdelta))
-    Zin = obj$Z
-    z = Zin-  dv
-    ## Addition
-    lambda_unit = obj$delta/sqrt(1-obj$delta^2)
-    lam= c(obj$delta)/sqrt(1-t(obj$delta)%*%obj$delta)
+    z = obj$Z-  dv
     aux = apply(b,1, function(s){
         dd = obj$D*s
         s = matrix(s)
-        zzz = matrix(Zin -s, ncol=obj$obs, byrow=TRUE)
-        #sum(tapply(z-dd, obj$levels, function(zz){
-        #    -.5*det.psi- .5*t(zz) %*% inv.psi %*%(zz)
-        #}))+
-        mle.sn(lam, zzz,sig)+
-            +sum(sapply(1:ncol(zzz), function(i) mle.sn(lambda_unit[i],zzz[,i], 1)))+
-            #-0.5*sum(((z -dd)^2)/(1-obj$delta^2) + log(1-obj$delta^2))+
+        sum(tapply(z-dd, obj$levels, function(zz){
+           -.5*det.psi- .5*t(zz) %*% inv.psi %*%(zz)
+        }))+
+            -0.5*sum(((z -dd)^2)/(1-obj$Sigdelta^2) + log(1-obj$Sigdelta^2))+
                 +obj$glm.fun(x = obj$glm.link(obj$X%*%obj$B+dd),obj$Y)+
-                    ## Random effect
+          #          ## Random effect
                     + sum(sapply(s, function(r) -0.5*log(G_in) -.5 *t(r)%*%r/obj$G))/obj$obs +
-                        -0#sum(v^2/2)
+                        -sum(obj$v^2/2)
     })
     mean(aux)
+}
+
+beta.hat.optim<-function(blist, all=FALSE)	{
+	### Beta Parameter
+	#####################################################
+	#Preliminary functions
+	# Log-likelihood for the beta parameter only. A simplified version of the general likelihood.
+	LLK.beta.simple<- function(beta, i, b){
+		dd =  if(obj$q>1) c(obj$D[obj$levels==i,] %*% b) else obj$D[obj$levels==i]*b
+		if(obj$p==1) beta=t(beta)
+        ## G_in = if(is.matrix(obj$G)) det(obj$G) else obj$G
+		-(
+            + obj$glm.fun(x = obj$glm.link(obj$X[obj$levels==i,]%*% beta +dd) , obj$Y[obj$levels==i])
+        )
+	}
+	LLK.beta.simple.all <-function(beta,b){
+		if(obj$q>1){
+                                        #sum(sapply(1:length(b), function(i) sum(sapply(1:units, function(j) LLK.beta.simple(beta, j, b[[i]][j,])))))
+			sum(sapply(1:nrow(b), function(i) LLK.beta.simple(beta, i, b[i,] )))
+		}else{
+			sum(sapply(1:obj$units, function(i) LLK.beta.simple(beta, i, b[i])))
+		}
+	}
+#####################################################
+	beta= obj$B
+	if(all){
+		b_l =  lapply(1:NROW(blist[[1]]), function(i) t(sapply(1:obj$units, function(j) blist[[j]][i,])))
+		sapply(b_l,function(b)
+			optim(beta, fn=LLK.beta.simple.all, b = b,
+                  method = "BFGS", lower = -Inf, upper = Inf,  control = list(), hessian = FALSE))
+
+	}else{
+		optim(beta, fn=LLK.beta.simple.all, b = blist, method = "BFGS", lower = -Inf, upper = Inf,  control = list(), hessian = FALSE)
+	}
 }
 
 B_analytic<-function(obj,link,b){
@@ -80,7 +105,6 @@ sig.auto <-	function(obj,p = obj$xi)
     ## Calculates the auto-regressive co-variance matrix Sigma based on xi
     round(obj$auto(obj$xpnd(obj$T[obj$levels==1]))^(-p),3)
 
-
 ZGenFromY<-function(obj,blist, mean = TRUE){
     ## Given Y, estimate Z by distribution transformation
     ## mean=TRUE does the transformation T as T(E(b)), rather than E(T(b))
@@ -95,14 +119,14 @@ ZGenFromY<-function(obj,blist, mean = TRUE){
         pp = obj$glm.pfun(x,  obj$Y)
         pp[which(pp>.999999)]=.9999
         pp[which(pp<.000001)]=.0001
-        z= mapply(auxf, pp, lambda_unit) + b
+        mapply(auxf, pp, lambda_unit) + b
     } else{
         b =  apply(blist, 1,function(r) obj$D*r)
         x  = obj$glm.link(c(obj$X %*% obj$B) + b)
         pp =  obj$glm.pfun(x,  obj$Y)
         pp[which(pp>.999999)]=.9999
         pp[which(pp<.000001)]=.0001
-        ll = matrix(lambda_unit, nrow=length(lambda_unit), ncol=ncol(pp1))
+        ll = matrix(lambda_unit, nrow=length(lambda_unit), ncol=ncol(pp))
         aux = mapply(auxf,pp, ll)
         rowMeans(matrix(aux, dim(pp)) + b)
     }
@@ -123,48 +147,37 @@ bGen.single<-function(obj,n, Psi){
     }, simplify = FALSE)
 }
 
+
 psi.llk<-function(obj,b.ln, sig.old){
-    ## Estimates the matrix Psi and hence xi and delta.
-    ##s = t(sapply(1:obj$units, function(r) Z_o[[r]] - mean(b.ln[[r]])))
-    Z = do.call('rbind',tapply(obj$Z, obj$levels, function(r)r))
-    s = t(sapply(1:obj$units, function(r) Z[r,] - mean(b.ln[[r]])))
-    alpha = c(obj$delta)
-    alpha =  alpha/sqrt(1-min(0.99,t(alpha)%*%alpha))
-    fit = msn.mle(y= s, start=list(rep(0, obj$obs), Omega = sig.old, alpha = alpha),opt.method="BFGS")
-    sig.temp = fit$dp$Omega;sig.temp
-    eta = sqrt(diag(sig.temp))
-    sig.temp = cov2cor(sig.temp)
+    LLK.xi.all<-function(i,b){
+        D_in = obj$D[obj$levels ==i]
+        dv = obj$Sigdelta *sqrt(2/pi)
+        z = obj$Z[obj$levels==i]
+       aux =  matrix(rowMeans(sapply(b, function(bb){
+           dd = D_in*bb
+           ((z - dd - dv))%*%t((z - dd - dv))
+       })), ncol = obj$obs, nrow = obj$obs)
+        aux
+    }
+    aux = sapply(1:obj$units, function(i) LLK.xi.all(i, b.ln[[i]]))
+    psi.temp =  matrix(rowMeans(aux), ncol= obj$obs)
+    dv = obj$Sigdelta*sqrt(2/pi)
+    sig.temp = psi.temp + dv%*%t(dv)
+
+    sig.temp  = cov2cor(sig.temp)
     hxi =-log(sig.temp)/ obj$xpnd(obj$T[obj$levels ==1])
-    hxi =mean(hxi[lower.tri(hxi)], na.rm =TRUE)
+    hxi = mean(hxi[lower.tri(hxi)], na.rm =TRUE)
     hxi = max(0.1, hxi)
     sig.temp = sig.auto(obj,p=hxi)
-    lam = fit$dp$alpha/eta
-    lam = rep( mean(lam), obj$obs)
-    ##lam = rep(1, obj$obs)
-    delta = lam/sqrt(1+t(lam)%*%lam)
-    delta= sign(delta)*pmin(0.99, abs(delta)) ## from wiki notes
-    Sigdelta = sqrtm(sig.temp)%*%delta
+    
+    muZ = do.call('rbind',tapply(obj$Z, obj$levels, function(r)r)) - sapply(b.ln,mean)
+    muZ = colMeans(muZ)*sqrt(2/pi)
+    delta = c(solve(sqrtm(sig.old))%*%muZ)
+    delta= sign(delta)*pmin(0.99, abs(delta))
+    Sigdelta = c(sqrtm(sig.temp)%*%delta)
     psi  = sig.temp -Sigdelta%*%t(Sigdelta)
-    list(Psi = psi , xi =hxi, delta = delta,Sigdelta = Sigdelta, sig = sig.temp)
+    list(Psi = psi , xi =hxi, delta = delta, Sigdelta=Sigdelta, sig = sig.temp)
 }
-
-mle.sn<-function (param, y, Omega) {
-    ## MLE of a Skew-normal used in many functions above
-    y = data.matrix(y)
-    x <- data.matrix(rep(1, nrow(y)))
-    d <- ncol(y)
-    w <- rep(1, nrow(y))
-    n <- sum(w)
-    p <- ncol(x)
-    beta <- rep(0, p,d)
-    eta <- param
-    y0 <- y - x %*% beta
-    D <- diag(qr(2 * pi * Omega)[[1]])
-    logDet <- sum(log(abs(D)))
-    dev <- n * logDet - 2 * sum(zeta(0, y0 %*% eta) * w) + n * d
-    dev/(-2)
-}
-
 
 best_cglmm<-function(obj, b_o, lambda){
     ##    source('functions.R', local=TRUE)

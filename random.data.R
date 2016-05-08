@@ -1,5 +1,4 @@
 ## A script made to generate a random dataset to fit using the model.
-
 ## storing all environment object names before the script
 obj.names = ls()
 
@@ -27,13 +26,23 @@ Sig <- sig.auto(xi)                      # covariance of Z
 
 k	<- 3                                # the gamma parameter
 
+## @@ MASS LIBRARY @@: mvrnorm(n = 1, mu, Sigma, tol = 1e-6, empirical = FALSE)
 b_o = lapply(1:units,function(r) mvrnorm(1,mu = rep(0,NROW(G)),Sigma=G))# original used b
 Db	= lapply(1:units, function(i) if(NROW(b)>1) c(D[F==i,]%*%b_o[[i]]) else  D[F==i]*b_o[[i]])
+
 ## @@ Inverting to get Y from Z @@Y
-alpha = lambda/sqrt(1+ t(lambda)%*%lambda)
-delta = alpha
+## alpha = lambda/sqrt(1+ t(lambda)%*%lambda)
+## delta = sqrtm(Sig)%*%alpha
+## lambda_unit = delta/sqrt(1-delta^2)
+## Z_o = rmsn(units, xi = 0, Omega = Sig , alpha = lambda)
+## Using a normal
+delta = lambda/sqrt(1+ t(lambda)%*%lambda)
+Sigdelta = c(sqrtm(Sig)%*%delta)
 lambda_unit = delta/sqrt(1-delta^2)
-Z_o = rmsn(units, xi = 0, Omega = Sig , alpha = lambda)
+v= abs(rnorm(units,0,1))
+Psi = Sig - Sigdelta%*%t(Sigdelta)
+Z_o = do.call('rbind',lapply(1:units, function(r)rmnorm(1, mean = Sigdelta*v[r], varcov = Psi) ))
+##Z_o= rmnorm(units, mean = Sigdelta*v, varcov = Psi)
 pz =  apply(Z_o, 1, function(r) psn(r, xi =0, omega=1, alpha =lambda_unit))
 
 if(response.family=='exp')
@@ -45,19 +54,21 @@ if(response.family=='gamma')
     Y = lapply(1:units, function(i){
         qgamma(pz[,i], shape =k, scale= glm.link(X[F==i,]%*%B +Db[[i]])/k)
     })
+Y= unlist(Y)
 
 Z_o = lapply(1:units, function(r) Z_o[r,] + b_o[[r]])
-Y= unlist(Y)
+
 # Default initialization
 lmm.in <- cglmm(X, Y, D,F,T,tol.err=tol.err, response.family=response.family)
 # Saving original set-up initialization 
 lmm.in$B = B
 lmm.in$G = G
 lmm.in$xi = xi
-lmm.in$delta = alpha
-lmm.in$Sigdelta = sqrtm(Sig)%*%alpha
+lmm.in$delta = delta
+lmm.in$Sigdelta = Sigdelta
 lmm.in$Z <-unlist(Z_o)
 lmm.in$b_o <- b_o
 
 ## removing undesired variables.
 rm(list= grep('lmm.in', setdiff(ls(), obj.names), invert=TRUE, value=TRUE))
+

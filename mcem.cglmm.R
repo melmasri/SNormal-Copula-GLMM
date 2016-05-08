@@ -1,7 +1,8 @@
 # A function that holds the MC-EM loop and the estimation procedure
+tol.err = 1e-4
 mcem.cglmm<- function(obj, itra =20,verbose=FALSE, delta, sink.to.file=FALSE, update.single.param = FALSE){
     ## Validation conditions
-
+    
     ## global setup variable
     n <- 50                             # Initial number or replications
     n.max <- 3000                       # Maximum number of replication
@@ -41,7 +42,6 @@ mcem.cglmm<- function(obj, itra =20,verbose=FALSE, delta, sink.to.file=FALSE, up
     LLK_best = -1e10
     BIC_best = -1e10
     
-    ## ME-MC loop    
 	for(i in 1:itra){
         ## Increasing n
         if(i%% n.increase.freq==0) n=n.increase.factor*n
@@ -52,9 +52,9 @@ mcem.cglmm<- function(obj, itra =20,verbose=FALSE, delta, sink.to.file=FALSE, up
         if((i-1)%% 3==0){
             param = sample(c('b', 'g', 'xi'), 3)
             if(i==1) param = c('b', 'g', 'xi')
-            if(update.single.param & verbose) print(paste('Updating order', param, sep= ' '))
+            if(update.single.param & verbose)
+                print(paste('Updating order', param, sep= ' '))
         }
-
         ## updating parameters
         if(param.update('b', i)){
             ## Estimating Beta analytically for exponential or gamma marginals with exponential link function
@@ -87,21 +87,18 @@ mcem.cglmm<- function(obj, itra =20,verbose=FALSE, delta, sink.to.file=FALSE, up
                        paste('B', 1:obj$p-1, sep=''),
                        paste('G', 1:obj$q, sep=''), 'xi',
                        paste('d', 1:obj$obs,sep=''))
-
             tb.new = c(i, n,sum(auxlikelihood), BIC,
                 obj$B, if(obj$q>1) diag(obj$G) else obj$G,obj$xi,
                 obj$d)
-
             tb.best = c(i,n,sum(LLK_best), BIC_best,
                 B_best, if(obj$q>1) diag(G_best) else G_best, xi_best,
                 delta_best)
-
             tb = rbind(tb.new,tb.best)
             colnames(tb)<-tb.head 
             rownames(tb)<-c('update', 'best')
             print(tb)
         }
-
+        
         ## Storing updates
         if((i<3)|(BIC - BIC_best > thresh(i,25, -0.05))){
             ## Recording best iteration
@@ -119,24 +116,21 @@ mcem.cglmm<- function(obj, itra =20,verbose=FALSE, delta, sink.to.file=FALSE, up
             BIC_best=BIC
         }
 
-        # reverting to best updates
+        ## reverting to best updates
         obj$G = G_best
         obj$B = B_best
         obj$delta<-delta_best
         obj$xi = xi_best
         Sigdelta_best = obj$Sigdelta
         Psi =Psi_best
+        if(update.Z)
+            obj$Z<-ZGenFromY(obj,b.ln.m, mean=FALSE) ## no need to update Z if the original is given
         obj$v <- abs (rnorm(obj$units,0,1))
         b.ln <-bGen.single(obj,n, Psi)
         b.ln.m = t(apply(do.call('cbind', b.ln), 1, function(r) rep(r, each= obj$obs)))
-        if(update.Z)  obj$Z<-ZGenFromY(obj,b.ln.m, mean=FALSE) ## no need to update Z if the original is given 
-
-        
     }
+    
     if(sink.to.file)   sink()           # closing sink
     ## return estimated parameters.
 	list(B=B_best,G = G_best,xi=xi_best, delta= delta_best,Sigdelta = Sigdelta_best,LLK = LLK_best ,Z = Z_best, v= v_best, b=b_best, Psi = Psi_best, itra = i_best)
 }
-
-
-

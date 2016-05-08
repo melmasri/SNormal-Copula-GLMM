@@ -13,6 +13,7 @@ library(mnormt)
 ##################################################
 ## Parameter set-up
 ## Uni variate fixed effect
+tol.err<-1e-5
 B_o = B= matrix(3, nrow=1,ncol=1)       # Fixed effect 
 units	= 200                           # no. of units
 obs 	=5                              # observation per unit
@@ -50,6 +51,7 @@ LLK_o = best_cglmm(lmm.in, lmm.in$b_o, lambda)
 ##################################################
 ## MC-EM estimation for a single chain
 source('mcem.cglmm.R')                   # MC-EM loop
+source('functions.R')
 print(sprintf('Best LLK %0.3f', LLK_o)) # best LLK
 mcmc.sim = mcem.cglmm(obj=lmm.in,itra = 40,verbose=TRUE, sink.to.file=FALSE, update.single.param = TRUE)
 
@@ -57,7 +59,7 @@ mcmc.sim$B
 mcmc.sim$B[1] + mean(unlist(mcmc.sim$b))
 mcmc.sim$G
 mcmc.sim$xi
-
+mcmc.sim$delta/sqrt(1-t(mcmc.sim$delta)%*%mcmc.sim$delta)
 plot(lmm.in, mcmc.sim) 
 
 ## To run for multiple chains

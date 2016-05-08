@@ -5,25 +5,18 @@ library(ellipse)
 ##################################################
 ##################################################
 ## Functions
-mse<-function(sim, real=FALSE){
+mse<-function(sim,obj, real=FALSE){
     ## Function that returns Mean, MC SD and MSE for some paramters
-    ## sim = mcmc.sim
     n = length(sim)
     param.name= names(sim[[1]])
-    param.name = grep('(b|LLK|v|Psi)', param.name, invert=TRUE, value = TRUE)
+    param.name = grep('(b|LLK|v|Psi|Sigdelta)', param.name, invert=TRUE, value = TRUE)
     aux = lapply(param.name, function(param){
-       ## print(param)
         aux = sapply(sim, function(r) r[[param]])
-        if(param =='xi'){
-            param='xi'
-            aux = aux[1,]
-            if(!real)
-                org = lmm.in[[param]][1]
-        }else if( param == 'Z'){
-            if(!real) org = unlist(Z_o)
+        if(param == 'Z'){
+            if(!real) org = obj$Z
         }else{
-            if(!real)  org = lmm.in[[param]] 
-               }
+            if(!real)  org = obj[[param]] 
+        }
         if(!is.null(dim(aux))){
             m = rowMeans(aux)
             sd = sqrt((rowMeans(aux^2)-rowMeans(aux)^2)*n/(n-1))
@@ -60,7 +53,7 @@ files = list.files(path = ".", pattern = 'SIM')
 sink('results_table.txt')
 for (f in files){
     load(f)
-    param.mse = mse(mcmc.sim)
+    param.mse = mse(mcmc.sim, lmm.in)
     ## Coverage probability for Beta
     if(length(lmm.in$B)>1){
         fisher.B = solve(t(lmm.in$X[,-1])%*%lmm.in$X[,-1])
@@ -95,15 +88,8 @@ for (f in files){
     ## xi
     Xi = c(xi =lmm.in$xi[1], param.mse$xi, NA)
     ## lambda
-    obj=lmm.in
-    aux = sapply(mcmc.sim, function(r){
-        x = r[[xi]][1]
-        sig  = sig.auto(1, x)
-        d = r[['delta']][1:obj$obs[1]]
-        a = solve(sqrtm(sig))%*%d
-        a = a/sqrt(1-a)
-    })
-    Lam = colMeans(aux)
+    Lam= rowMeans(sapply(mcmc.sim, function(r) r[['delta']]/(sqrt(1-r[['delta']]%*%r[['delta']]))))
+
     Lam = c(1, mean(Lam), sd(Lam) , mean((Lam - 1)^2), NA)
     ## All
     print(f)
