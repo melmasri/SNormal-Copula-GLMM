@@ -15,7 +15,7 @@ log.lik<-function(obj,b,Psi){
         sum(tapply(z-dd, obj$levels, function(zz){
            -.5*det.psi- .5*t(zz) %*% inv.psi %*%(zz)
         }))+
-            -0.5*sum(((z -dd)^2)/(1-obj$Sigdelta^2) + log(1-obj$Sigdelta^2))+
+            -0.5*sum(((z -dd)^2)/(1-obj$delta^2) + log(1-obj$delta^2))+
                 +obj$glm.fun(x = obj$glm.link(obj$X%*%obj$B+dd),obj$Y)+
           #          ## Random effect
                     + sum(sapply(s, function(r) -0.5*log(G_in) -.5 *t(r)%*%r/obj$G))/obj$obs +
