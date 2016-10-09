@@ -78,7 +78,7 @@ mcem.cglmm<- function(obj, itra =20,verbose=FALSE, delta, sink.to.file=FALSE, up
         }    
 
         ## Calculating likelihood and BIC
-        auxlikelihood = log.lik(obj,b.ln.m,Psi)
+        auxlikelihood = log.lik(obj,b.ln.m,Psi,sig.old)
         BIC=-2*log(abs(sum(auxlikelihood))) +(obj$p+2)*log(sum(obj$obs))
 
         ## Printing results on screen

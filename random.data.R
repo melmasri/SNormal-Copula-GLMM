@@ -30,12 +30,26 @@ k	<- 3                                # the gamma parameter
 b_o = lapply(1:units,function(r) mvrnorm(1,mu = rep(0,NROW(G)),Sigma=G))# original used b
 Db	= lapply(1:units, function(i) if(NROW(b)>1) c(D[F==i,]%*%b_o[[i]]) else  D[F==i]*b_o[[i]])
 ## @@ Inverting to get Y from Z @@Y
-alpha = lambda/sqrt(1+ t(lambda)%*%lambda)
-delta = alpha
+delta = lambda/sqrt(1+ t(lambda)%*%lambda)
+Sigdelta = sqrtm(Sig)%*%delta
+Psi = Sig - Sigdelta%*%t(Sigdelta)
+dp = list(xi=0, Omega = Sig, alpha=lambda)
+## alpha.x<-function(Sig, delta){
+##     S = sqrtm(Sig)
+##     A0 = rep(0, nrow(Sig))
+##     sapply(1:nrow(Sig), function(r){
+##         A= A0
+##         A[r]<-1
+##         ##t(A)%*%S%*%delta/sqrt(t(A)%*%Sig%*%A - (t(A)%*%S%*%delta)^2)
+##         t(A)%*%S%*%delta/sqrt(1-t(delta)%*%S%*%A%*%t(A)%*%S%*%delta)
+##     })
+## }
+## lambda_unit = alpha.x(Sig, delta)
 lambda_unit = delta/sqrt(1-delta^2)
-Z_o = rmsn(units, xi = 0, Omega = Sig , alpha = lambda)
+#lambda_unit = alpha
+Z_o = rmsn(units, dp=dp)
+#Z_o = rmsn(units, xi = 0, Omega = Sig , alpha = lambda)
 pz =  apply(Z_o, 1, function(r) psn(r, xi =0, omega=1, alpha =lambda_unit))
-
 if(response.family=='exp')
     Y = lapply(1:units, function(i){
         qexp(pz[,i], rate = 1/glm.link(X[F==i,]%*%B +Db[[i]]), lower.tail = TRUE)
@@ -54,8 +68,8 @@ lmm.in <- cglmm(X, Y, D,F,T,tol.err=tol.err, response.family=response.family)
 lmm.in$B = B
 lmm.in$G = G
 lmm.in$xi = xi
-lmm.in$delta = alpha
-lmm.in$Sigdelta = sqrtm(Sig)%*%alpha
+lmm.in$delta = delta
+lmm.in$Sigdelta = Sigdelta
 lmm.in$Z <-unlist(Z_o)
 lmm.in$b_o <- b_o
 

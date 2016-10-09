@@ -1,34 +1,53 @@
 tol.err = 1e-4
-log.lik<-function(obj, b, Psi){
+log.lik<-function(obj, b, Psi,sig){
     ## obj := an object from class 'cglmm'
     ## b is an m x n matrix of random effects, for m replication for each unit n
     ## Psi is the covariance matrix 
-    sig= sig.auto(obj,obj$xi)
-    if(missing(Psi)) Psi = sig -obj$Sigdelta%*%t(obj$Sigdelta)
+    #sig= sig.auto(obj,obj$xi)
+    #if(missing(Psi)) Psi = sig -obj$Sigdelta%*%t(obj$Sigdelta)
     ## log likelihood for all, faster method.
-    inv.psi=  pd.solve(Psi, silent=TRUE, log.det=TRUE)
-    det.psi =  attributes(inv.psi)$log.det
+    #inv.psi=  pd.solve(Psi, silent=TRUE, log.det=TRUE)
+    #det.psi =  attributes(inv.psi)$log.det
     G_in = obj$G
-    dv = unlist(lapply(obj$v, function(r) r*obj$Sigdelta))
-    Zin = obj$Z
-    z = Zin-  dv
+    ## dv = unlist(lapply(obj$v, function(r) r*obj$Sigdelta))
+    ## Zin = obj$Z
+    ## z = Zin-  dv
     ## Addition
+    z = do.call('rbind',tapply(obj$Z, obj$levels, function(r)r))
+    alpha = obj$delta/sqrt(1-t(obj$delta)%*%obj$delta)
+
+    ## alpha.x<-function(Sig, delta){
+##     S = sqrtm(Sig)
+##     A0 = rep(0, nrow(Sig))
+##     sapply(1:nrow(Sig), function(r){
+##         A= A0
+##         A[r]<-1
+##         ##t(A)%*%S%*%delta/sqrt(t(A)%*%Sig%*%A - (t(A)%*%S%*%delta)^2)
+##         t(A)%*%S%*%delta/sqrt(1-t(delta)%*%S%*%A%*%t(A)%*%S%*%delta)
+##     })
+## }
+##     lambda_unit = alpha.x(sig, obj$delta)
+
     lambda_unit = obj$delta/sqrt(1-obj$delta^2)
-    lam= c(obj$delta)/sqrt(1-t(obj$delta)%*%obj$delta)
+    #lambda_unit=alpha
+    ## lam= c(obj$delta)/sqrt(1-t(obj$delta)%*%obj$delta)
+    ##dp = op2dp(list(xi=0, Psi = Psi, lambda= obj$delta),family='SN')
     aux = apply(b,1, function(s){
         dd = obj$D*s
-        s = matrix(s)
-        zzz = matrix(Zin -s, ncol=obj$obs, byrow=TRUE)
+        #s = matrix(s)
+        #zzz = matrix(Zin -s, ncol=obj$obs, byrow=TRUE)
+        zzz = do.call('rbind',tapply(obj$Z-dd, obj$levels, function(r)r))
         #sum(tapply(z-dd, obj$levels, function(zz){
         #    -.5*det.psi- .5*t(zz) %*% inv.psi %*%(zz)
-        #}))+
-        mle.sn(lam, zzz,sig)+
-            +sum(sapply(1:ncol(zzz), function(i) mle.sn(lambda_unit[i],zzz[,i], 1)))+
+                                        #}))+3
+        #mle.sn(lam, zzz,sig)+
+        sum(dmsn(x=zzz,Omega=sig, alpha=alpha,log=TRUE))+
+            -sum(sapply(1:ncol(zzz),          function(i)sum(dsn(x=zzz[,i],alpha=lambda_unit[i],log=TRUE))))+
             #-0.5*sum(((z -dd)^2)/(1-obj$delta^2) + log(1-obj$delta^2))+
-                +obj$glm.fun(x = obj$glm.link(obj$X%*%obj$B+dd),obj$Y)+
-                    ## Random effect
-                    + sum(sapply(s, function(r) -0.5*log(G_in) -.5 *t(r)%*%r/obj$G))/obj$obs +
-                        -0#sum(v^2/2)
+            +obj$glm.fun(x = obj$glm.link(obj$X%*%obj$B+dd),obj$Y)+
+                ## Random effect
+                + sum(sapply(s, function(r) -0.5*log(G_in) -.5 *t(r)%*%r/obj$G))/obj$obs +
+                    -0#sum(v^2/2)
     })
     mean(aux)
 }
@@ -127,21 +146,28 @@ psi.llk<-function(obj,b.ln, sig.old){
     ## Estimates the matrix Psi and hence xi and delta.
     ##s = t(sapply(1:obj$units, function(r) Z_o[[r]] - mean(b.ln[[r]])))
     Z = do.call('rbind',tapply(obj$Z, obj$levels, function(r)r))
-    s = t(sapply(1:obj$units, function(r) Z[r,] - mean(b.ln[[r]])))
-    alpha = c(obj$delta)
-    alpha =  alpha/sqrt(1-min(0.99,t(alpha)%*%alpha))
-    fit = msn.mle(y= s, start=list(rep(0, obj$obs), Omega = sig.old, alpha = alpha),opt.method="BFGS")
+    s = Z - unlist(sapply(b.ln,mean))
+    #s = t(sapply(1:obj$units, function(r) Z[r,] - mean(b.ln[[r]])))
+    #alpha = c(obj$delta)
+    #alpha =  alpha/sqrt(1-min(0.99,t(alpha)%*%alpha))
+    fit = msn.mle(y= s)
+    print(fit$dp)
+    ## fit = msn.mle(y= s, start=list(rep(0, obj$obs), Omega = sig.old, alpha = alpha),opt.method="BFGS")
     sig.temp = fit$dp$Omega;sig.temp
     eta = sqrt(diag(sig.temp))
-    sig.temp = cov2cor(sig.temp)
-    hxi =-log(sig.temp)/ obj$xpnd(obj$T[obj$levels ==1])
+    hxi =-log(cov2cor(sig.temp))/ obj$xpnd(obj$T[obj$levels ==1])
     hxi =mean(hxi[lower.tri(hxi)], na.rm =TRUE)
-    hxi = max(0.1, hxi)
-    sig.temp = sig.auto(obj,p=hxi)
-    lam = fit$dp$alpha/eta
-    lam = rep( mean(lam), obj$obs)
+    #hxi = max(0.1, hxi)
+    #sig.temp = sig.auto(obj,p=hxi)
+    ##op = dp2op(list(xi=0, Omega = fit$dp$Omega, alpha = fit$dp$alpha),family='SN')
+    #lam = fit$dp$alpha/eta
+    #lam = rep( mean(lam), obj$obs)
     ##lam = rep(1, obj$obs)
+#    print(fit$dp)
+    lam=fit$dp$alpha#/eta
+ #   print(eta)
     delta = lam/sqrt(1+t(lam)%*%lam)
+    #delta = op$lambda
     delta= sign(delta)*pmin(0.99, abs(delta)) ## from wiki notes
     Sigdelta = sqrtm(sig.temp)%*%delta
     psi  = sig.temp -Sigdelta%*%t(Sigdelta)

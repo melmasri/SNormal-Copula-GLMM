@@ -28,7 +28,7 @@ mse<-function(sim, real=FALSE){
             m = rowMeans(aux)
             sd = sqrt((rowMeans(aux^2)-rowMeans(aux)^2)*n/(n-1))
             if(!real)
-                mse =colMeans((org - t(aux))^2)
+                mse =rowMeans((org - aux)^2)
         }else{
             m = mean(aux)
             sd = sd(aux)
