@@ -1,5 +1,5 @@
 # SNormal-Copula-GLMM
-An R code implementation of a skew-normal copula-driven generalized linear mixed model (GLMM)
+R code implementation of a skew-normal copula-driven generalized linear mixed model (GLMM)
 
 Start with the `main.R` script and read the inline documentations.
 
